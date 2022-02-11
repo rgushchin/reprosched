@@ -1,0 +1,8 @@
+[package]
+name = "reprosched"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ndarray = "0.15.4"
+linux-futex="0.1.1"

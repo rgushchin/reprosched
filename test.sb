@@ -1,0 +1,29 @@
+fn main {
+	spawn(input, 4, inputfn);
+	spawn(output, 4, outputfn);
+	spawn(workers, 4, workerfn);
+	join(input);
+	stop();
+}
+
+fn inputfn {
+	repeat (1000) {
+		sleep(1000);
+		wake(1, 1);
+	}
+}
+
+fn outputfn {
+	repeat (-1) {
+		wait(2);
+		compute(8, 1024);
+	}
+}
+
+fn workerfn {
+	repeat (-1) {
+		wait(1);
+		compute(64, 2048);
+		wake(2, 1);
+	}
+}
