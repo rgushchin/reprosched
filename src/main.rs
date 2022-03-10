@@ -674,7 +674,7 @@ fn exec_prog(prog: &Arc<Prog>) {
     }
 }
 
-fn process_timings(data: &[f64]) -> f64 {
+fn process_timings(data: &[f64]) -> (f64, f64, f64) {
     let n = data.len();
     let avg: f64 = data.iter().sum::<f64>() / n as f64;
 
@@ -686,12 +686,7 @@ fn process_timings(data: &[f64]) -> f64 {
     let sigma3 = 3.0 * stddev;
     let pct = 100.0 * (sigma3) / avg;
 
-    println!(
-        "n {} average {:<10.0} ± {:<10.0} (± {:.1}%)",
-        n, avg, sigma3, pct
-    );
-
-    pct
+    (avg, sigma3, pct)
 }
 
 fn calibrate_compute() {
@@ -804,35 +799,44 @@ fn run_test(args: &Vec<String>, options: &Vec<String>) {
     let prog = Arc::new(prog);
 
     let mut timings: Vec<f64> = vec![];
-    let mut prev_pct = 0.0;
     let mut flushes = 0;
     loop {
         prog.stop.store(false, Ordering::Relaxed);
         let now = Instant::now();
         exec_prog(&prog);
-        if prog.verbose {
-            println!("{:?}", now.elapsed());
-        }
         timings.push(now.elapsed().as_micros() as f64);
-        if timings.len() % 10 == 0 {
-            let pct = process_timings(&timings);
-            // If the error goes down or at least is not growing
-            // substantionally, go on for 100 measurements
-            // Otherwise, restart, but not more than 10 times.
-            if pct <= prev_pct + 3.0 {
-                if timings.len() == 100 {
-                    println!("----------------------------------------");
-                    process_timings(&timings);
-                    break;
-                }
-            } else {
-                timings.drain(..);
-                flushes += 1;
-                if flushes >= 10 {
-                    break;
-                }
+        let (avg, sigma3, pct) = process_timings(&timings);
+
+	if timings.len() == 1 {
+		println!(
+		    "n {:2} {:10.0}",
+		    timings.len(), avg
+		);
+	} else {
+		println!(
+		    "n {:2} {:10.0} (± {:.1}%)",
+		    timings.len(), avg, pct
+		);
+	}
+
+        // If the error is above 5%, restart, but not more than 10 times.
+	// Otherwise, go on for 10 measurements.
+        if pct > 5.0 {
+	    println!("--------------- discard ----------------");
+            timings.drain(..);
+            flushes += 1;
+            if flushes < 10 {
+		continue;
+	    } else {
+		println!("No result: data is too noisy");
+                break;
             }
-            prev_pct = pct;
+        }
+
+	if timings.len() == 10 {
+            println!("========================================");
+	    println!("Result: {} ± {:<10.0} (± {:.1}%)", avg, sigma3, pct);
+            break;
         }
     }
 }
