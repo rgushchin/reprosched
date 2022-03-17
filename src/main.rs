@@ -6,6 +6,8 @@ mod calibrate;
 mod testlib;
 mod tests;
 
+use crate::testlib::TestCtx;
+
 fn process_timings(data: &[f64]) -> (f64, f64, f64) {
     let n = data.len();
     let avg: f64 = data.iter().sum::<f64>() / n as f64;
@@ -23,7 +25,6 @@ fn process_timings(data: &[f64]) -> (f64, f64, f64) {
 
 fn run_test(args: &Vec<String>, options: &Vec<String>) {
     let mut test = testlib::Test::new();
-
     for opt in options.iter() {
         match opt.as_str() {
             "-v" => test.verbose = true,
@@ -31,18 +32,20 @@ fn run_test(args: &Vec<String>, options: &Vec<String>) {
             _ => panic!("Invalid option specified. Supported: -v (verbose) -l (debug locking)"),
         }
     }
-    tests::web::init(&mut test);
-
     let test = Arc::new(test);
+    let ctx = Arc::new(tests::web::WebCtx::new());
 
     let mut timings: Vec<f64> = vec![];
     let mut flushes = 0;
     loop {
-        test.reset();
         let now = Instant::now();
-        tests::web::main(&test);
-        test.join_all_threads();
+        tests::web::main(&test, &ctx);
         timings.push(now.elapsed().as_micros() as f64);
+
+	test.stop();
+	ctx.reset();
+	test.join_all_threads();
+	test.reset();
 
         let (avg, sigma3, pct) = process_timings(&timings);
         if timings.len() == 1 {

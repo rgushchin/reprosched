@@ -9,13 +9,14 @@ use std::time::Duration;
 
 pub struct Test {
     threads: Mutex<HashMap<String, Vec<thread::JoinHandle<()>>>>,
-    futexes: HashMap<String, Futex<Private>>,
     pub stop: AtomicBool,
     pub verbose: bool,
     pub debug_locking: bool,
 }
 
-pub type ArcTest = Arc<Test>;
+pub trait TestCtx: Send + Sync {
+    fn reset(&self);
+}
 
 impl Test {
     pub fn stopped(&self) -> bool {
@@ -48,19 +49,21 @@ impl Test {
         }
     }
 
-    pub fn spawn(self: &Arc<Test>,
-        user_handle: &str,
-        count: usize,
-        func: fn(&Arc<Test>),
+    pub fn spawn<T: 'static + Sync + Send>(self: &Arc<Test>,
+		 user_handle: &str,
+		 count: usize,
+		 func: fn(&Arc<Test>, &Arc<T>),
+		 ctx: &Arc<T>
     ) {
 	if self.stopped() {
 	    return
 	}
         for _ in 0..count {
             let self2 = self.clone();
+	    let ctx2 = ctx.clone();
 
             let handle = thread::spawn(move || {
-                func(&self2);
+                func(&self2, &ctx2);
             });
 
             let mut hash = self.threads.lock().unwrap();
@@ -83,27 +86,21 @@ impl Test {
         }
     }
 
-    pub fn add_futex(&mut self, handle: &str) {
-	self.futexes.insert(handle.to_string(), Futex::new(0));
-    }
-
-    pub fn wake(self: &Arc<Test>, handle: &str, count: i32, caller: &str) {
+    pub fn wake(self: &Arc<Test>, futex: &Futex<Private>, count: i32, caller: &str) {
         if self.debug_locking {
-            println!("{}(): wake {:?}", caller, handle);
+            println!("{}(): wake {:?}", caller, futex);
         }
-	let lock = &self.futexes[handle];
-        lock.wake(count);
+        futex.wake(count);
     }
 
-    pub fn wait(&self, handle: &str, caller: &str) {
+    pub fn wait(&self, futex: &Futex<Private>, caller: &str) {
 	if self.stopped() {
 	    return
 	}
         if self.debug_locking {
-            println!("{}(): prepare to wait on {:?}", caller, handle);
+            println!("{}(): prepare to wait on {:?}", caller, futex);
         }
-	let lock = &self.futexes[handle];
-        lock.wait(0).unwrap();
+        futex.wait(0).unwrap();
         if self.debug_locking {
             println!("{}(): woken up", caller);
         }
@@ -119,7 +116,6 @@ impl Test {
     pub fn new() -> Self {
         Test {
             threads: Mutex::new(HashMap::new()),
-	    futexes: HashMap::new(),
             stop: AtomicBool::new(false),
             verbose: false,
             debug_locking: false,
@@ -132,9 +128,6 @@ impl Test {
         }
 
         self.stop.store(true, Ordering::Relaxed);
-	for (_, futex) in &self.futexes {
-	    futex.wake(i32::MAX);
-	}
     }
 
     pub fn reset(&self) {
