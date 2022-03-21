@@ -6,3 +6,4 @@ edition = "2018"
 [dependencies]
 ndarray = "0.15.4"
 linux-futex="0.1.1"
+num_cpus = "1.13.1"

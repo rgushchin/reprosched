@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
+use num_cpus;
 
 pub struct Test {
     threads: Mutex<HashMap<String, Vec<thread::JoinHandle<()>>>>,
@@ -146,5 +147,9 @@ impl Test {
                 handle.join().unwrap();
             }
         }
+    }
+
+    pub fn num_cpus(&self) -> usize {
+	num_cpus::get()
     }
 }
