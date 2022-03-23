@@ -18,7 +18,7 @@ pub fn calibrate_compute() {
     'outer: loop {
         'inner: loop {
             let now = Instant::now();
-            test.compute(loops, size);
+            test.compute(size, loops);
             let elapsed = now.elapsed().as_micros();
 
             let entry = timings.entry(size as u64).or_insert(HashMap::new());
