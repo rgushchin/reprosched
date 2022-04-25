@@ -1,6 +1,7 @@
 use std::env;
 use std::sync::Arc;
 use std::time::Instant;
+use std::time::Duration;
 
 mod calibrate;
 mod testlib;
@@ -37,6 +38,7 @@ fn run_test(args: &Vec<String>, options: &Vec<String>) {
 
     let mut timings: Vec<f64> = vec![];
     let mut flushes = 0;
+    let mut prev_pct = 100.0;
     loop {
         let now = Instant::now();
         tests::web::main(&test, &ctx);
@@ -54,25 +56,26 @@ fn run_test(args: &Vec<String>, options: &Vec<String>) {
             println!("n {:2} {:10.0} (± {:.1}%)", timings.len(), avg, pct);
         }
 
-        // If the error is above 5%, restart, but not more than 10 times.
+        // If the error is above 3%, restart, but not more than 10 times.
         // Otherwise, go on for 10 measurements.
-        if pct > 5.0 {
+        if pct > 3.0 {
             println!("--------------- discard ----------------");
             timings.drain(..);
             flushes += 1;
-            if flushes < 10 {
-                continue;
-            } else {
+            if flushes >= 10 {
                 println!("No result: data is too noisy");
                 break;
             }
         }
 
-        if timings.len() == 10 {
+	if (pct > prev_pct && timings.len() > 4) || timings.len() > 10 || pct < 0.5 {
             println!("========================================");
-            println!("Result: {} ± {:<10.0} (± {:.1}%)", avg, sigma3, pct);
+            println!("Result: {:?} ± {:?} (± {:.1}%)", Duration::from_micros(avg as u64),
+		     Duration::from_micros(sigma3 as u64), pct);
             break;
         }
+
+	prev_pct = pct;
     }
 }
 
