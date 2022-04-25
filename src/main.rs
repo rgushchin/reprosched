@@ -1,7 +1,7 @@
 use std::env;
 use std::sync::Arc;
-use std::time::Instant;
 use std::time::Duration;
+use std::time::Instant;
 
 mod calibrate;
 mod testlib;
@@ -24,30 +24,22 @@ fn process_timings(data: &[f64]) -> (f64, f64, f64) {
     (avg, sigma3, pct)
 }
 
-fn run_test(args: &Vec<String>, options: &Vec<String>) {
-    let mut test = testlib::Test::new();
-    for opt in options.iter() {
-        match opt.as_str() {
-            "-v" => test.verbose = true,
-            "-l" => test.debug_locking = true,
-            _ => panic!("Invalid option specified. Supported: -v (verbose) -l (debug locking)"),
-        }
-    }
+fn run_test(test: testlib::Test, ctx: impl TestCtx) {
     let test = Arc::new(test);
-    let ctx = Arc::new(tests::web::WebCtx::new());
+    let ctx = Arc::new(ctx);
 
     let mut timings: Vec<f64> = vec![];
     let mut flushes = 0;
     let mut prev_pct = 100.0;
     loop {
         let now = Instant::now();
-        tests::web::main(&test, &ctx);
+        ctx.main(&test);
         timings.push(now.elapsed().as_micros() as f64);
 
-	test.stop();
-	ctx.reset();
-	test.join_all_threads();
-	test.reset();
+        test.stop();
+        ctx.reset();
+        test.join_all_threads();
+        test.reset();
 
         let (avg, sigma3, pct) = process_timings(&timings);
         if timings.len() == 1 {
@@ -68,14 +60,38 @@ fn run_test(args: &Vec<String>, options: &Vec<String>) {
             }
         }
 
-	if (pct > prev_pct && timings.len() > 4) || timings.len() > 10 || pct < 0.5 {
+        if (pct > prev_pct && timings.len() > 4) || timings.len() > 10 || pct < 0.5 {
             println!("========================================");
-            println!("Result: {:?} ± {:?} (± {:.1}%)", Duration::from_micros(avg as u64),
-		     Duration::from_micros(sigma3 as u64), pct);
+            println!(
+                "Result: {:?} ± {:?} (± {:.1}%)",
+                Duration::from_micros(avg as u64),
+                Duration::from_micros(sigma3 as u64),
+                pct
+            );
             break;
         }
 
-	prev_pct = pct;
+        prev_pct = pct;
+    }
+}
+
+fn parse_test_args(args: &Vec<String>, options: &Vec<String>) {
+    let mut test = testlib::Test::new();
+
+    for opt in options.iter() {
+        match opt.as_str() {
+            "-v" => test.verbose = true,
+            "-l" => test.debug_locking = true,
+            _ => panic!("Invalid option specified. Supported: -v (verbose) -l (debug locking)"),
+        }
+    }
+
+    for opt in args.iter() {
+        match opt.as_str() {
+            "web" => return run_test(test, tests::web::WebCtx::new()),
+            "xdb" => return run_test(test, tests::xdb::XdbCtx::new()),
+            _ => panic!("Invalid argument specified. Supported: web, xdb"),
+        }
     }
 }
 
@@ -106,9 +122,10 @@ fn main() {
             }
         }
     }
+
     match cmd.as_str() {
         "calibrate" => calibrate::calibrate_compute(),
-        "run" => run_test(&args, &options),
+        "run" => parse_test_args(&args, &options),
         _ => panic!("invalid command specified"),
     }
 }

@@ -1,12 +1,12 @@
 use linux_futex::{Futex, Private};
 use ndarray::Array2;
+use num_cpus;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
-use num_cpus;
 
 pub struct Test {
     threads: Mutex<HashMap<String, Vec<thread::JoinHandle<()>>>>,
@@ -16,18 +16,19 @@ pub struct Test {
 }
 
 pub trait TestCtx: Send + Sync {
+    fn main(self: &Arc<Self>, test: &Arc<Test>);
     fn reset(&self);
 }
 
 impl Test {
     pub fn stopped(&self) -> bool {
-	self.stop.load(Ordering::Relaxed)
+        self.stop.load(Ordering::Relaxed)
     }
 
     pub fn compute(&self, size: usize, loops: usize) {
-	if self.stopped() {
-	    return
-	}
+        if self.stopped() {
+            return;
+        }
         let mut a = Array2::<f64>::zeros((size, size));
         let mut b = Array2::<f64>::zeros((size, size));
         let mut c = Array2::<f64>::zeros((size, size));
@@ -50,18 +51,19 @@ impl Test {
         }
     }
 
-    pub fn spawn<T: 'static + Sync + Send>(self: &Arc<Test>,
-		 user_handle: &str,
-		 count: usize,
-		 func: fn(&Arc<Test>, &Arc<T>),
-		 ctx: &Arc<T>
+    pub fn spawn<T: 'static + Sync + Send>(
+        self: &Arc<Test>,
+        user_handle: &str,
+        count: usize,
+        func: fn(&Arc<Test>, &Arc<T>),
+        ctx: &Arc<T>,
     ) {
-	if self.stopped() {
-	    return
-	}
+        if self.stopped() {
+            return;
+        }
         for _ in 0..count {
             let self2 = self.clone();
-	    let ctx2 = ctx.clone();
+            let ctx2 = ctx.clone();
 
             let handle = thread::spawn(move || {
                 func(&self2, &ctx2);
@@ -74,9 +76,9 @@ impl Test {
     }
 
     pub fn join(&self, handle: &str, caller: &str) {
-	if self.stopped() {
-	    return
-	}
+        if self.stopped() {
+            return;
+        }
         let mut threads = self.threads.lock().unwrap();
         let (_, vec) = threads.remove_entry(handle).unwrap();
         if self.debug_locking {
@@ -95,9 +97,9 @@ impl Test {
     }
 
     pub fn wait(&self, futex: &Futex<Private>, caller: &str) {
-	if self.stopped() {
-	    return
-	}
+        if self.stopped() {
+            return;
+        }
         if self.debug_locking {
             println!("{}(): prepare to wait on {:?}", caller, futex);
         }
@@ -108,9 +110,9 @@ impl Test {
     }
 
     pub fn usleep(&self, us: u64) {
-	if self.stopped() {
-	    return
-	}
+        if self.stopped() {
+            return;
+        }
         thread::sleep(Duration::from_micros(us));
     }
 
@@ -124,7 +126,7 @@ impl Test {
     }
 
     pub fn stop(&self) {
-	if self.debug_locking {
+        if self.debug_locking {
             println!("stop()");
         }
 
@@ -150,6 +152,6 @@ impl Test {
     }
 
     pub fn num_cpus(&self) -> usize {
-	num_cpus::get()
+        num_cpus::get()
     }
 }
